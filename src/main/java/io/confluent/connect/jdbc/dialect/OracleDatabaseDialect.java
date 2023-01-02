@@ -15,6 +15,7 @@
 
 package io.confluent.connect.jdbc.dialect;
 
+import io.confluent.connect.jdbc.sink.JdbcSinkConfig;
 import io.confluent.connect.jdbc.sink.JdbcSinkConfig.InsertMode;
 import io.confluent.connect.jdbc.sink.JdbcSinkConfig.PrimaryKeyMode;
 import io.confluent.connect.jdbc.sink.PreparedStatementBinder;
@@ -141,7 +142,26 @@ public class OracleDatabaseDialect extends GenericDatabaseDialect {
 
     if (schema.type() == Type.STRING) {
       if (colDef.type() == Types.CLOB) {
-        statement.setCharacterStream(index, new StringReader((String) value));
+        boolean valueBinded = false;
+        if (this.config instanceof JdbcSinkConfig) {
+          String insertMode = ((JdbcSinkConfig)this.config).getString(JdbcSinkConfig.INSERT_MODE);
+          if (insertMode != null && !insertMode.isEmpty()) {
+            long valueLength = ((String) value).length();
+            if (InsertMode.valueOf(insertMode.toUpperCase()) == InsertMode.UPSERT) {
+              if (valueLength < 4000) {
+                statement.setCharacterStream(index, new StringReader((String) value), valueLength);
+              } else {
+                statement.setCharacterStream(index, new StringReader((String) value));
+              }
+            } else {
+              statement.setCharacterStream(index, new StringReader((String) value), valueLength);
+            }
+            valueBinded = true;
+          }
+        }
+        if (!valueBinded) {
+          statement.setCharacterStream(index, new StringReader((String) value));
+        }
         return true;
       } else if (colDef.type() == Types.NCLOB) {
         statement.setNCharacterStream(index, new StringReader((String) value));
